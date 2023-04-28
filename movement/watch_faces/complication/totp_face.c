@@ -55,6 +55,14 @@ static void _update_display(totp_state_t *totp_state) {
 
     watch_display_string(buf, 0);
 }
+static const char* names[] = {
+    " GITHUB ",
+    "",
+    // " HEROKU-but-BIGGER! "
+};
+
+static int cur_name_index = -8;
+// static int swallow_ticks = 0;
 
 void totp_face_setup(movement_settings_t *settings, uint8_t watch_face_index, void ** context_ptr) {
     (void) settings;
@@ -77,10 +85,54 @@ bool totp_face_loop(movement_event_t event, movement_settings_t *settings, void 
 
     switch (event.event_type) {
         case EVENT_TICK:
-            totp_state->timestamp++;
-            // fall through
+            totp_state->timestamp = watch_utility_date_time_to_unix_time(watch_rtc_get_date_time(), movement_timezone_offsets[settings->bit.time_zone] * 60);
+
+            // swallow_ticks++;
+
+            // if (swallow_ticks == 4) {
+            //     swallow_ticks = 0;
+            //     totp_state->timestamp++;
+            //     // fall through
+            // }
         case EVENT_ACTIVATE:
             _update_display(totp_state);
+            movement_request_tick_frequency(4);
+            result = div(totp_state->timestamp, timesteps[index]);
+            if (result.quot != totp_state->steps) {
+                totp_state->current_code = getCodeFromTimestamp(totp_state->timestamp);
+                totp_state->steps = result.quot;
+            }
+            valid_for = timesteps[index] - result.rem;
+
+            // cur_name_index == (sizeof(names[0])/sizeof(names[0][0]) - 1) ? cur_name_index = 0 : cur_name_index++;
+            char current_name_char1 = ' '; //names[index][cur_name_index];
+            char current_name_char2 = ' ';
+
+            if (cur_name_index == strlen(names[index]) - 1) {
+                cur_name_index = -8;
+            } else {
+                cur_name_index++;
+            }
+
+            if (cur_name_index < 0 || strlen(names[index]) == 0) {
+                // if negative, display 2-char "shortened name"
+                current_name_char1 = labels[index][0];
+                current_name_char2 = labels[index][1];
+            } else {
+                // else display current scrolling letter
+                current_name_char1 = names[index][cur_name_index];
+                current_name_char2 = ' ';
+            }
+
+            sprintf(buf, "%c%c%2d%06lu", current_name_char1, current_name_char2, valid_for, totp_state->current_code);
+
+            watch_display_string(buf, 0);
+            break;
+        case EVENT_MODE_BUTTON_UP:
+            movement_move_to_next_face();
+            break;
+        case EVENT_LIGHT_BUTTON_DOWN:
+            movement_illuminate_led();
             break;
         case EVENT_TIMEOUT:
             movement_move_to_face(0);
